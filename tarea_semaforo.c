@@ -45,62 +45,28 @@
 #include "task.h"
 #include "semphr.h"
 
-SemaphoreHandle_t semaforo_segundos;
-SemaphoreHandle_t semoaforo_minutos;
+SemaphoreHandle_t g_led_semaphore;
 SemaphoreHandle_t contador;
 
 void PORTA_IRQHandler() {
 	BaseType_t xHigherPriorityTaskWoken;
 	PORT_ClearPinsInterruptFlags(PORTA, 1 << 4);
 	xHigherPriorityTaskWoken = pdFALSE;
-	xSemaphoreGiveFromISR(semaforo_segundos, &xHigherPriorityTaskWoken);
+	xSemaphoreGiveFromISR(g_led_semaphore, &xHigherPriorityTaskWoken);
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
-void seconds_task(void *arg) {
-	TickType_t LastWakeTime;
-	const TickType_t periodo = pdMS_TO_TICKS(1000);
-	LastWakeTime = xTaskGetTickCount();
-	uint8_t segundos = 0;
-	for (;;) {
-		vTaskDelayUntil(&LastWakeTime, periodo);
-		segundos++;
-		if (60 == segundos) {
-			segundos = 0;
-			xSemaphoreGive(semaforo_segundos);
-		}
-	}
-}
 
-void minutes_task(void *arg) {
-	uint8_t minutos = 0;
-	for (;;) {
-		xSemaphoreTake(semaforo_segundos, portMAX_DELAY);
-		minutos++;
-		if (60 == minutos) {
-			minutos = 0;
-			xSemaphoreGive(semoaforo_minutos);
-		}
 
-	}
-}
-
-void hours_task(void *arg) {
-
-}
-
-void print_task(void *arg) {
-
-}
-
-void led_task(void *arg) {
-	for (;;) {
+void led_task( void *arg ) {
+	for (; ;)
+	{
 		xSemaphoreTake(g_led_semaphore, portMAX_DELAY);
 		GPIO_TogglePinsOutput(GPIOB, 1 << 21);
 	}
 }
 
-int main(void) {
+int main( void ) {
 
 	/* Init board hardware. */
 	BOARD_InitBootPins();
@@ -111,6 +77,7 @@ int main(void) {
 
 	CLOCK_EnableClock(kCLOCK_PortB);
 	CLOCK_EnableClock(kCLOCK_PortA);
+	CLOCK_EnableClock(kCLOCK_PortC);
 
 	port_pin_config_t config_led = { kPORT_PullDisable, kPORT_SlowSlewRate,
 			kPORT_PassiveFilterDisable, kPORT_OpenDrainDisable,
@@ -137,22 +104,16 @@ int main(void) {
 	NVIC_SetPriority(PORTA_IRQn, 5);
 
 	GPIO_WritePinOutput(GPIOB, 21, 0);
-	semaforo_segundos = xSemaphoreCreateBinary();
-	semoaforo_minutos = xSemaphoreCreateBinary();
+	g_led_semaphore = xSemaphoreCreateBinary();
 	contador = xSemaphoreCreateCounting(10, 0);
-	xTaskCreate(seconds_task, "Segundos", configMINIMAL_STACK_SIZE, NULL,
-			configMAX_PRIORITIES - 1, NULL);
-	xTaskCreate(minutes_task, "Minutes", configMINIMAL_STACK_SIZE, NULL,
-			configMAX_PRIORITIES - 1, NULL);
-	xTaskCreate(hours_task, "Hours", configMINIMAL_STACK_SIZE, NULL,
-			configMAX_PRIORITIES - 1, NULL);
-	xTaskCreate(print_task, "Mensaje", configMINIMAL_STACK_SIZE, NULL,
+	xTaskCreate(led_task, "Led", configMINIMAL_STACK_SIZE, NULL,
 			configMAX_PRIORITIES - 1, NULL);
 
 	//xTaskCreate(dummy, "dummy task", configMINIMAL_STACK_SIZE, NULL, configMAX_PRIORITIES-2, NULL);
 
 	vTaskStartScheduler();
-	while (1) {
+	while (1)
+	{
 
 	}
 	return 0;
