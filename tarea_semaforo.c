@@ -45,6 +45,8 @@
 #include "task.h"
 #include "semphr.h"
 
+#define maxcount 10
+
 SemaphoreHandle_t g_led_semaphore;
 SemaphoreHandle_t contador;
 
@@ -56,13 +58,27 @@ void PORTA_IRQHandler() {
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
-
+void PORTC_IRQHandler() {
+	BaseType_t xHigherPriorityTaskWoken;
+	PORT_ClearPinsInterruptFlags(PORTC, 1 << 6);
+	xHigherPriorityTaskWoken = pdFALSE;
+	xSemaphoreGiveFromISR(contador, &xHigherPriorityTaskWoken);
+	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
 
 void led_task( void *arg ) {
 	for (; ;)
 	{
+		uint8_t count = (uint8_t)uxSemaphoreGetCount(contador);
 		xSemaphoreTake(g_led_semaphore, portMAX_DELAY);
-		GPIO_TogglePinsOutput(GPIOB, 1 << 21);
+		if (maxcount != count)
+		{
+			GPIO_TogglePinsOutput(GPIOB, 1 << 21);
+//			GPIO_WritePinOutput(GPIOE, 26,1);
+		} else{
+			GPIO_TogglePinsOutput(GPIOE, 1 << 26);
+			GPIO_WritePinOutput(GPIOB, 21,1);
+		}
 	}
 }
 
@@ -75,41 +91,48 @@ int main( void ) {
 	/* Init FSL debug console. */
 	BOARD_InitDebugConsole();
 
-	CLOCK_EnableClock(kCLOCK_PortB);
-	CLOCK_EnableClock(kCLOCK_PortA);
-	CLOCK_EnableClock(kCLOCK_PortC);
+	CLOCK_EnableClock(kCLOCK_PortB);    //21
+	CLOCK_EnableClock(kCLOCK_PortA);    //4
+	CLOCK_EnableClock(kCLOCK_PortC);    //6
+	CLOCK_EnableClock(kCLOCK_PortE);    //6
 
 	port_pin_config_t config_led = { kPORT_PullDisable, kPORT_SlowSlewRate,
 			kPORT_PassiveFilterDisable, kPORT_OpenDrainDisable,
 			kPORT_LowDriveStrength, kPORT_MuxAsGpio, kPORT_UnlockRegister, };
 
 	PORT_SetPinConfig(PORTB, 21, &config_led);
+	PORT_SetPinConfig(PORTE, 26, &config_led);
 
 	port_pin_config_t config_switch = { kPORT_PullDisable, kPORT_SlowSlewRate,
 			kPORT_PassiveFilterDisable, kPORT_OpenDrainDisable,
 			kPORT_LowDriveStrength, kPORT_MuxAsGpio, kPORT_UnlockRegister };
+
 	PORT_SetPinInterruptConfig(PORTA, 4, kPORT_InterruptFallingEdge);
+	PORT_SetPinInterruptConfig(PORTC, 6, kPORT_InterruptFallingEdge);
 
 	PORT_SetPinConfig(PORTA, 4, &config_switch);
+	PORT_SetPinConfig(PORTC, 6, &config_switch);
 
 	gpio_pin_config_t led_config_gpio = { kGPIO_DigitalOutput, 1 };
 
 	GPIO_PinInit(GPIOB, 21, &led_config_gpio);
+	GPIO_PinInit(GPIOE, 26, &led_config_gpio);
 
 	gpio_pin_config_t switch_config_gpio = { kGPIO_DigitalInput, 1 };
 
 	GPIO_PinInit(GPIOA, 4, &switch_config_gpio);
+	GPIO_PinInit(GPIOC, 6, &switch_config_gpio);
 
 	NVIC_EnableIRQ(PORTA_IRQn);
+	NVIC_EnableIRQ(PORTC_IRQn);
 	NVIC_SetPriority(PORTA_IRQn, 5);
+	NVIC_SetPriority(PORTC_IRQn, 4);
 
-	GPIO_WritePinOutput(GPIOB, 21, 0);
 	g_led_semaphore = xSemaphoreCreateBinary();
 	contador = xSemaphoreCreateCounting(10, 0);
+
 	xTaskCreate(led_task, "Led", configMINIMAL_STACK_SIZE, NULL,
 			configMAX_PRIORITIES - 1, NULL);
-
-	//xTaskCreate(dummy, "dummy task", configMINIMAL_STACK_SIZE, NULL, configMAX_PRIORITIES-2, NULL);
 
 	vTaskStartScheduler();
 	while (1)
@@ -118,10 +141,3 @@ int main( void ) {
 	}
 	return 0;
 }
-
-//led_semaphore xsemaphorecreatebinary()
-//en el irqhandler al final xhigherprioritytaskwoken = pdfalsesemaphor give y port yieldformisr
-
-//led task
-//	xsemaphoretake(led_semaphore, portmax_delay)
-//	gpiotogglepinsout gpiob 21;
