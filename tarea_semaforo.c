@@ -66,18 +66,26 @@ void PORTC_IRQHandler() {
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
-void led_task( void *arg ) {
+void blueled_task( void *arg ) {
+	for (; ;)
+	{
+		xSemaphoreTake(g_led_semaphore, portMAX_DELAY);
+		GPIO_TogglePinsOutput(GPIOB, 1 << 21);
+	}
+}
+
+void greenled_task( void *arg ) {
 	for (; ;)
 	{
 		uint8_t count = (uint8_t)uxSemaphoreGetCount(contador);
-		xSemaphoreTake(g_led_semaphore, portMAX_DELAY);
-		if (maxcount != count)
+		vTaskDelay(pdMS_TO_TICKS(100));
+		if (maxcount == count)
 		{
-			GPIO_TogglePinsOutput(GPIOB, 1 << 21);
-//			GPIO_WritePinOutput(GPIOE, 26,1);
-		} else{
 			GPIO_TogglePinsOutput(GPIOE, 1 << 26);
 			GPIO_WritePinOutput(GPIOB, 21,1);
+			for(uint8_t x = 0;x<10;x++){
+				xSemaphoreTake(contador, portMAX_DELAY);
+			}
 		}
 	}
 }
@@ -125,14 +133,17 @@ int main( void ) {
 
 	NVIC_EnableIRQ(PORTA_IRQn);
 	NVIC_EnableIRQ(PORTC_IRQn);
-	NVIC_SetPriority(PORTA_IRQn, 5);
-	NVIC_SetPriority(PORTC_IRQn, 4);
+	NVIC_SetPriority(PORTA_IRQn, 4);
+	NVIC_SetPriority(PORTC_IRQn, 5);
 
 	g_led_semaphore = xSemaphoreCreateBinary();
 	contador = xSemaphoreCreateCounting(10, 0);
 
-	xTaskCreate(led_task, "Led", configMINIMAL_STACK_SIZE, NULL,
-			configMAX_PRIORITIES - 1, NULL);
+
+	xTaskCreate(greenled_task, "verde", configMINIMAL_STACK_SIZE, NULL,
+				configMAX_PRIORITIES - 1, NULL);
+	xTaskCreate(blueled_task, "azul", configMINIMAL_STACK_SIZE, NULL,
+				configMAX_PRIORITIES - 1, NULL);
 
 	vTaskStartScheduler();
 	while (1)
